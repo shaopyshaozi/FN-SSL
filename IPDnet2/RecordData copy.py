@@ -211,8 +211,8 @@ class RealData(Dataset):
 				else:
 					input_mic_signal,signal_start,input_dp_signal = self.seg_signal(signal=mic_signal,fs = self.target_fs,dp_signal=dp_signal,rng=rng)
 					dp_vad = self.cal_vad(input_dp_signal)
-					target = self.all_targets.at[sig_path.split('RealMAN/')[-1], 'angle(°)']
-					distance = self.all_targets.at[sig_path.split('RealMAN/')[-1], 'distance']
+					target = self.all_targets.at[sig_path.split('RealMAN_modi/')[-1], 'angle(°)']
+					distance = self.all_targets.at[sig_path.split('RealMAN_modi/')[-1], 'distance']
 					if isinstance(target, float):
 						targets = torch.ones((self.target_len,1)) * int(target)
 						if distance < -100:
@@ -235,15 +235,13 @@ class RealData(Dataset):
 			#set overlap mode
 			if self.max_source > 1:
 				# for 1-source
-				# Always 2 sources, with 0% non-overlap-----------------------------------------------
-				if rng.random() < 0.0:
+				if rng.random() < 0.3:
 					dp_vad_list[1] = torch.zeros_like(dp_vad_list[1])
 					targets_list[1] = torch.zeros_like(targets_list[1])
 					distance_list[1] = torch.zeros_like(distance_list[1])
 					mic_signal_list[1] = torch.zeros_like(mic_signal_list[1])
 				else:
-					# for 2-sources, only half-half, random partial, and full overlap/ no head-tail overlap-----------------------
-					overlap_mode_idx = rng.choice([2, 3, 4])
+					overlap_mode_idx = rng.choice([1, 2, 3, 4])
 					if overlap_mode_idx == 1:
 						# Head-tail
 						for spk_id in range(self.max_source):
@@ -295,50 +293,21 @@ class RealData(Dataset):
 				targets = torch.cat(targets_list,dim=-1)
 				distances = torch.cat(distance_list,dim=-1)
 			noise_path = self.noise_paths[rng.integers(low=0, high=len(self.noise_paths))]
-
 			wav_info = sf.info(noise_path)
-			noise_fs = wav_info.samplerate
 			wav_frames = wav_info.frames
-
-			needed_noise_frames = int(self.wav_use_len * noise_fs)   # 4 sec in original noise fs
-
-			if wav_frames < needed_noise_frames:
-				noise_begin_index = 0
-				noise_end_index = wav_frames
-			else:
-				noise_begin_index = rng.integers(0, wav_frames - needed_noise_frames + 1)
-				noise_end_index = noise_begin_index + needed_noise_frames
-
-			noise_signal, noise_fs = self.load_noise(
-				noise_path,
-				begin_index=noise_begin_index,
-				end_index=noise_end_index,
-				use_mic_id=use_mic_id_item
-			)
-
+			noise_begin_index =  rng.integers(low=0, high=wav_frames-(self.wav_use_len*self.input_fs))
+			noise_end_index =  noise_begin_index + (self.wav_use_len*self.input_fs)
+			noise_signal,noise_fs = self.load_noise(noise_path,begin_index=noise_begin_index,end_index=noise_end_index,use_mic_id=use_mic_id_item)
 			if noise_fs != self.target_fs:
-				noise_signal = self.resample(noise_signal, noise_fs, self.target_fs)
-
-			# if too short after resampling, pad to match
-			if noise_signal.shape[0] < input_mic_signal.shape[0]:
-				padded = np.zeros_like(input_mic_signal)
-				padded[:noise_signal.shape[0], :] = noise_signal
-				noise_signal = padded
-			else:
-				noise_signal = noise_signal[:input_mic_signal.shape[0], :]
-
-			coeff = self.get_snr_coff(input_mic_signal, noise_signal, snr_item)
-			if coeff is None:
+				noise_signal = self.resample(noise_signal,noise_fs,self.target_fs)
+			coeff =  self.get_snr_coff(input_mic_signal,noise_signal,snr_item)
+			try:
+				assert coeff is not None
+			except:
 				coeff = 1.0
-
 			noise_signal = coeff * noise_signal
-			input_mic_signal = input_mic_signal + noise_signal
+			input_mic_signal += noise_signal
 			array_topo = self.pos_mics[use_mic_id_item]
-
-			print("input_mic_signal:", input_mic_signal.shape)
-			print("noise_signal:", noise_signal.shape)
-			print("noise_fs:", noise_fs)
-
 			return input_mic_signal,targets.to(torch.float32),dp_vad.to(torch.float32),array_topo,distances.to(torch.float32)
 
 		else:

@@ -13,9 +13,12 @@ from typing import Iterator, Optional
 import torch
 from pytorch_lightning.utilities.rank_zero import rank_zero_warn
 from torch.utils.data import Dataset, Sampler
-from torch.utils.data.distributed import DistributedSampler, T_co
+from torch.utils.data.distributed import DistributedSampler
+from typing import TypeVar
 from collections import defaultdict
 import random
+
+T_co = TypeVar("T_co", covariant=True)
 
 class MyDistributedSampler(DistributedSampler[T_co]):
     r"""Sampler for single GPU and multi GPU (or Distributed) cases. Change int index to a tuple (index, random seed for this index).

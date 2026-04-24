@@ -33,30 +33,34 @@ from Module import DPIPD2
 #opts = opt()
 #dirs = opts.dir()
 
-dataset_train = RealData(data_dir='./RealMAN/',
-                target_dir=['./RealMAN/train/train_static_source_location.csv',
-                            './RealMAN/train/train_moving_source_location.csv'],
-                noise_dir='./RealMAN/train/ma_noise/',
-                use_mic_id=[1,3,5,7,0],
-                max_source=2,
-                # is_variable_array=True,
-                )
+dataset_train = RealData(
+    data_dir='/mnt/e/RealMAN',
+    target_dir=[
+        '/mnt/e/RealMAN/train/train_static_source_location.csv',
+        '/mnt/e/RealMAN/train/train_moving_source_location.csv'
+    ],
+    noise_dir='/mnt/e/RealMAN/train/ma_noise',
+    use_mic_id=[1,3,5,7,0],
+    max_source=2,
+)
 
-dataset_val = RealData(data_dir='./RealMAN/val_gen',
-                target_dir=None,
-                noise_dir=None,
-                use_mic_id=[1,3,5,7,0],
-                max_source=2,
-                on_the_fly=False,
-                )
+dataset_val = RealData(
+    data_dir='/mnt/e/RealMAN/val_gen',
+    target_dir=None,
+    noise_dir=None,
+    use_mic_id=[1,3,5,7,0],
+    max_source=2,
+    on_the_fly=False,
+)
 
-dataset_test = RealData(data_dir='./RealMAN/test_gen',
-                target_dir=None,
-                noise_dir=None,
-                use_mic_id=[1,3,5,7,0],
-                max_source=2,
-                on_the_fly=False,
-                )
+dataset_test = RealData(
+    data_dir='/mnt/e/RealMAN/test_gen',
+    target_dir=None,
+    noise_dir=None,
+    use_mic_id=[1,3,5,7,0],
+    max_source=2,
+    on_the_fly=False,
+)
 
 class MyDataModule(LightningDataModule):
     
@@ -181,12 +185,12 @@ class MyModel(LightningModule):
         gt_batch = data_batch[1:]
         pred_batch = self(in_batch)
         if pred_batch.shape[1] > gt_batch[0].shape[1]:
-            pred_batch = pred_batch[:,:gt_batch[0].shape[1],:,:,:]
-        else:
-            gt_batch[0] = gt_batch[0][:,:pred_batch.shape[1],:]
-            gt_batch[1] = gt_batch[1][:pred_batch.shape[1],:,:,:]
-            gt_batch[-1] = gt_batch[-1][:,:pred_batch.shape[1],:]
-            gt_batch[-2] = gt_batch[-2][:,:pred_batch.shape[1],:]    
+            pred_batch = pred_batch[:, :gt_batch[0].shape[1], :, :, :]
+
+        elif pred_batch.shape[1] < gt_batch[0].shape[1]:
+            gt_batch[0] = gt_batch[0][:, :pred_batch.shape[1], :]
+            gt_batch[-1] = gt_batch[-1][:, :pred_batch.shape[1], :]
+            gt_batch[-2] = gt_batch[-2][:, :pred_batch.shape[1], :]   
         loss = self.cal_loss(pred_batch=pred_batch, gt_batch=gt_batch)
 
         self.log("valid/loss", loss, sync_dist=True)
@@ -206,13 +210,12 @@ class MyModel(LightningModule):
         gt_batch = data_batch[1:]
         pred_batch = self(in_batch)
         if pred_batch.shape[1] > gt_batch[0].shape[1]:
-            pred_batch = pred_batch[:,:gt_batch[0].shape[1],:,:,:]
-        else:
-            gt_batch[0] = gt_batch[0][:,:pred_batch.shape[1],:]
-            gt_batch[1] = gt_batch[1][:pred_batch.shape[1],:,:,:]
-            gt_batch[-1] = gt_batch[-1][:,:pred_batch.shape[1],:]
-        
-            gt_batch[-2] = gt_batch[-2][:,:pred_batch.shape[1],:]   
+            pred_batch = pred_batch[:, :gt_batch[0].shape[1], :, :, :]
+
+        elif pred_batch.shape[1] < gt_batch[0].shape[1]:
+            gt_batch[0] = gt_batch[0][:, :pred_batch.shape[1], :]
+            gt_batch[-1] = gt_batch[-1][:, :pred_batch.shape[1], :]
+            gt_batch[-2] = gt_batch[-2][:, :pred_batch.shape[1], :]
         loss,gt_batch_ipd,pred_batch_ipd  = self.cal_loss(pred_batch=pred_batch, gt_batch=gt_batch,mode='test')
         self.log("test/loss", loss, sync_dist=True)
         get_metric = at_module.PredDOA(mic_location=gt_batch[-3])
@@ -241,7 +244,13 @@ class MyModel(LightningModule):
         ipd_gt = ipd_gt.reshape(nb*nt,-1,nsource).permute(0,2,1)
         
         pred_batch = pred_batch.to(self.dev)
-        best_metric, best_perm = permutation_invariant_training(pred_batch, ipd_gt, self.MSE_loss, 'min')
+        best_metric, best_perm = permutation_invariant_training(
+            pred_batch,
+            ipd_gt,
+            self.MSE_loss,
+            mode="speaker-wise",
+            eval_func="min"
+        )
         pred_batch= pit_permutate(pred_batch, best_perm)
 
         loss = torch.nn.functional.mse_loss(pred_batch.contiguous(), ipd_gt.contiguous())
@@ -372,15 +381,15 @@ class MyCLI(LightningCLI):
         parser.set_defaults(model_checkpoint_defaults)
 
         # RichProgressBar
-        parser.add_lightning_class_args(
-            RichProgressBar, nested_key='progress_bar')
-        parser.set_defaults({
-            "progress_bar.console_kwargs": {
-                "force_terminal": True,
-                "no_color": True,  
-                "width": 200, 
-            }
-        })
+        # parser.add_lightning_class_args(
+        #     RichProgressBar, nested_key='progress_bar')
+        # parser.set_defaults({
+        #     "progress_bar.console_kwargs": {
+        #         "force_terminal": True,
+        #         "no_color": True,  
+        #         "width": 200, 
+        #     }
+        # })
 
         # LearningRateMonitor
         parser.add_lightning_class_args(
