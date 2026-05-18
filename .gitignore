@@ -4,3 +4,5 @@
 /IPDnet2/ipdnet2
 /IPDnet2/utils/__pycache__
 /IPDnet2/hidden96_fre128
+/IPDnet2/hidden96_fre128_2batch
+/IPDnet2/test_data/test_gen

@@ -145,16 +145,23 @@ class RealData(Dataset):
 	def __getitem__(self, idx_seed):
 		idx,seed = idx_seed
 		rng = np.random.default_rng(np.random.PCG64(seed))
-		print(len(self.data_paths))
+		#print(len(self.data_paths))
 		if self.on_the_fly:	
 			sig_path_list = []
 			sig_path_1 = self.data_paths[idx]
 			sig_path_list.append(sig_path_1)
 			if self.max_source > 1:
-			# Generate a random index for the second sig_path, ensuring it's different from idx
-				idx2 = rng.choice([i for i in range(len(self.data_paths)) if i != idx])
-				sig_path2 = self.data_paths[idx2]
-				sig_path_list.append(sig_path2)
+				# Generating more than two overlaping sources
+				available_indices = [i for i in range(len(self.data_paths)) if i != idx]
+				extra_indices = rng.choice(
+					available_indices,
+					size=self.max_source - 1,
+					replace=False
+				)
+
+				for extra_idx in extra_indices:
+					sig_path_list.append(self.data_paths[extra_idx])
+
 			if self.is_varibale_array:
 				use_mic_id_item,_ = self.select_mic_array_9mic(self.pos_mics,rng=rng)
 			else:
@@ -236,66 +243,37 @@ class RealData(Dataset):
 				distance_list.append(distances)
 			#set overlap mode
 			if self.max_source > 1:
-				# for 1-source
-				# Always 2 sources, with 0% non-overlap-----------------------------------------------
-				if rng.random() < 0.0:
-					dp_vad_list[1] = torch.zeros_like(dp_vad_list[1])
-					targets_list[1] = torch.zeros_like(targets_list[1])
-					distance_list[1] = torch.zeros_like(distance_list[1])
-					mic_signal_list[1] = torch.zeros_like(mic_signal_list[1])
-				else:
-					# for 2-sources, only half-half, random partial, and full overlap/ no head-tail overlap-----------------------
-					overlap_mode_idx = rng.choice([2, 3, 4])
+
+				for spk_id in range(1, self.max_source):
+					# Always overlapping !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+					overlap_mode_idx = rng.choice([1])
+
 					if overlap_mode_idx == 1:
-						# Head-tail
-						for spk_id in range(self.max_source):
-							mask_len = rng.integers(0,10)
-							if spk_id == 0:	
-								dp_vad_list[spk_id][:mask_len] = 0
-								mic_signal_list[spk_id][:mask_len*1600,:] = 0
-								targets_list[spk_id][:mask_len] = 0
-								distance_list[spk_id][:mask_len] = 0
-							else:
-								dp_vad_list[spk_id][-mask_len:] = 0
-								mic_signal_list[spk_id][-mask_len*1600:,:] = 0
-								targets_list[spk_id][-mask_len:] = 0
-								distance_list[spk_id][-mask_len:] = 0								
+						# full overlap
+						pass
+
 					elif overlap_mode_idx == 2:
-						for spk_id in range(self.max_source):
-							if spk_id == 0:
-								mask_len = rng.integers(20,35)
-								mask_half = (40 - mask_len) / 2
-								dp_vad_list[spk_id][:int(mask_half)] = 0
-								mic_signal_list[spk_id][:int(1600*mask_half),:] = 0
-								targets_list[spk_id][:int(mask_half)] = 0
-								distance_list[spk_id][:int(mask_half)] = 0     
-								dp_vad_list[spk_id][-int(mask_half):] = 0
-								mic_signal_list[spk_id][-int(1600*mask_half):,:] = 0
-								targets_list[spk_id][-int(mask_half):] = 0 
-								distance_list[spk_id][-int(mask_half):] = 0      
+						# remove head part
+						mask_len = rng.integers(1, 20)
+
+						dp_vad_list[spk_id][:mask_len] = 0
+						mic_signal_list[spk_id][:mask_len * 1600, :] = 0
+						targets_list[spk_id][:mask_len] = 0
+						distance_list[spk_id][:mask_len] = 0
+
 					elif overlap_mode_idx == 3:
-						if rng.random() < 0.5:
-							for spk_id in range(self.max_source):
-								if spk_id == 0:
-									mask_len = rng.integers(0,20)
-									dp_vad_list[spk_id][:mask_len] = 0
-									mic_signal_list[spk_id][:mask_len*1600,:] = 0
-									targets_list[spk_id][:mask_len] = 0
-									distance_list[spk_id][:mask_len] = 0
-						else:
-							for spk_id in range(self.max_source):
-								if spk_id == 0:
-									mask_len = rng.integers(0,20)
-									dp_vad_list[spk_id][-mask_len:] = 0
-									mic_signal_list[spk_id][-mask_len*1600:,:] = 0
-									targets_list[spk_id][-mask_len:] = 0
-									distance_list[spk_id][-mask_len:] = 0
-					else:
-						pass	
-				dp_vad = torch.cat(dp_vad_list,dim=-1)
-				input_mic_signal = np.array(torch.sum(torch.cat(mic_signal_list,dim=-1),dim=-1))
-				targets = torch.cat(targets_list,dim=-1)
-				distances = torch.cat(distance_list,dim=-1)
+						# remove tail part
+						mask_len = rng.integers(1, 20)
+
+						dp_vad_list[spk_id][-mask_len:] = 0
+						mic_signal_list[spk_id][-mask_len * 1600:, :] = 0
+						targets_list[spk_id][-mask_len:] = 0
+						distance_list[spk_id][-mask_len:] = 0
+
+				dp_vad = torch.cat(dp_vad_list, dim=-1)
+				input_mic_signal = np.array(torch.sum(torch.cat(mic_signal_list, dim=-1), dim=-1))
+				targets = torch.cat(targets_list, dim=-1)
+				distances = torch.cat(distance_list, dim=-1)
 			noise_path = self.noise_paths[rng.integers(low=0, high=len(self.noise_paths))]
 
 			wav_info = sf.info(noise_path)
@@ -337,9 +315,12 @@ class RealData(Dataset):
 			input_mic_signal = input_mic_signal + noise_signal
 			array_topo = self.pos_mics[use_mic_id_item]
 
-			print("input_mic_signal:", input_mic_signal.shape)
-			print("noise_signal:", noise_signal.shape)
-			print("noise_fs:", noise_fs)
+			print("Number of selected sources:", len(sig_path_list))
+			print("Number of mic signals:", len(mic_signal_list))
+			print("targets shape:", targets.shape)
+			print("distances shape:", distances.shape)
+			print("vad shape:", dp_vad.shape)
+			print("Active sources per frame:", (distances > 0).sum(dim=1))
 
 			return input_mic_signal,targets.to(torch.float32),dp_vad.to(torch.float32),array_topo,distances.to(torch.float32)
 

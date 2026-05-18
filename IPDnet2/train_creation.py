@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import soundfile as sf
-from RecordData_multiple_samescene import RealData
+from RecordData_multiple import RealData
 from tqdm import tqdm
 
 
@@ -49,28 +49,15 @@ def generate_fixed_set(
 
 
 if __name__ == "__main__":
-    # Validation set
+    # Train set
     generate_fixed_set(
-        save_dir=r"E:/RealMAN/val_gen_1",
+        save_dir=r"E:/RealMAN/train_gen",
         data_dir=r"E:/RealMAN/",
         target_csvs=[
-            r"E:/RealMAN/val_raw/val_static_source_location.csv",
-            r"E:/RealMAN/val_raw/val_moving_source_location.csv",
+            r"E:/RealMAN/train/train_static_source_location.csv",
+            r"E:/RealMAN/train/train_moving_source_location.csv",
         ],
-        noise_dir=r"E:/RealMAN/val_raw/ma_noise",
+        noise_dir=r"E:/RealMAN/train/ma_noise",
         use_mic_id=[2,4,6,8],
         max_source=3,
     )
-
-    # # Test set
-    # generate_fixed_set(
-    #     save_dir=r"E:/RealMAN/test_gen",
-    #     data_dir=r"E:/RealMAN/",
-    #     target_csvs=[
-    #         r"E:/RealMAN/test_raw/test_static_source_location.csv",
-    #         r"E:/RealMAN/test_raw/test_moving_source_location.csv",
-    #     ],
-    #     noise_dir=r"E:/RealMAN/test_raw/ma_noise",
-    #     use_mic_id=[2,4,6,8],
-    #     max_source=3,
-    # )

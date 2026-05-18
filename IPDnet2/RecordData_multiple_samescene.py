@@ -9,6 +9,24 @@ from scipy import signal
 from utils_ import search_files, audiowu_high_array_geometry
 from pathlib import Path
 
+import re
+from pathlib import Path
+from collections import defaultdict
+
+def normalize_path(path):
+    return str(path).replace("\\", "/")
+
+def get_noise_scene(path):
+    path = normalize_path(path)
+    return path.split("/ma_noise/")[-1].split("/")[0]
+
+def get_speech_scene(path):
+    path = normalize_path(path)
+    return path.split("/ma_speech/")[-1].split("/")[0]
+
+def get_scene_prefix(scene):
+    return re.sub(r"\d+$", "", scene)
+
 
 class RealData(Dataset):
 	def __init__(self, data_dir, target_dir, noise_dir, input_fs=16000, use_mic_id =[1,2,3,4,5,6,7,8,0], target_fs=16000, snr = [-10,15], wav_use_len=4, on_the_fly = True, is_variable_array = False, max_source =1):
@@ -18,14 +36,33 @@ class RealData(Dataset):
 		if on_the_fly:
 			for dir in target_dir:
 				target = pd.read_csv(dir, encoding='gbk')
+				# print(self.all_targets.columns.tolist())
+				# print(self.all_targets.head())
 				self.data_paths += [data_dir+i for i in target['filename'].to_list()]
 				self.all_targets = pd.concat([self.all_targets, target], ignore_index=True)
+
+			self.scene_to_indices = defaultdict(list)
+			# extract folder path name
+			for i, path in enumerate(self.data_paths):
+				scene = get_speech_scene(path)
+				self.scene_to_indices[scene].append(i)
+
 		# set filename as the search index
 			self.all_targets.set_index('filename', inplace=True)
 			self.SNR = snr
 			self.wav_use_len = wav_use_len
 			self.target_len = self.wav_use_len * 10
 			self.noise_paths = search_files(noise_dir,flag=self.ends)
+
+			self.prefix_to_noise_paths = defaultdict(list)
+
+			for noise_path in self.noise_paths:
+				scene = get_noise_scene(noise_path)
+				prefix = get_scene_prefix(scene)
+				self.prefix_to_noise_paths[prefix].append(noise_path)
+
+			print("Noise prefixes:", self.prefix_to_noise_paths.keys())
+
 		else:
 			self.data_paths = search_files(data_dir,flag='.wav')
 		self.target_fs = target_fs
@@ -143,16 +180,39 @@ class RealData(Dataset):
 	def __getitem__(self, idx_seed):
 		idx,seed = idx_seed
 		rng = np.random.default_rng(np.random.PCG64(seed))
-		#print(self.data_paths,len(self.data_paths))
+		#print(len(self.data_paths))
 		if self.on_the_fly:	
 			sig_path_list = []
 			sig_path_1 = self.data_paths[idx]
 			sig_path_list.append(sig_path_1)
 			if self.max_source > 1:
-			# Generate a random index for the second sig_path, ensuring it's different from idx
-				idx2 = rng.choice([i for i in range(len(self.data_paths)) if i != idx])
-				sig_path2 = self.data_paths[idx2]
-				sig_path_list.append(sig_path2)
+				# Generating more than two overlaping sources
+				scene = get_speech_scene(sig_path_1)
+				same_scene_indices = [
+					i for i in self.scene_to_indices[scene]
+					if i != idx
+				]
+
+				if len(same_scene_indices) >= self.max_source - 1:
+					extra_indices = rng.choice(
+						same_scene_indices,
+						size=self.max_source - 1,
+						replace=False
+					)
+					print(f"\nSame scene used for index: {idx}, scene: {scene}")
+				else: 
+					# fallback: same scene not enough, then random from whole dataset
+					available_indices = [i for i in range(len(self.data_paths)) if i != idx]
+					extra_indices = rng.choice(
+						available_indices,
+						size=self.max_source - 1,
+						replace=False
+					)
+					print(f"NOT SAME SCENE USED")
+
+				for extra_idx in extra_indices:
+					sig_path_list.append(self.data_paths[extra_idx])
+
 			if self.is_varibale_array:
 				use_mic_id_item,_ = self.select_mic_array_9mic(self.pos_mics,rng=rng)
 			else:
@@ -169,7 +229,7 @@ class RealData(Dataset):
 				snr_item = rng.uniform(self.SNR[0], self.SNR[1])
 				mic_signal, fs = self.load_signals(sig_path,use_mic_id=use_mic_id_item)
 				if fs != self.target_fs:
-					print('--------------------')
+					#print('--------------------')
 					mic_signal = self.resample(mic_signal=mic_signal,fs=fs,new_fs=self.target_fs)
 				len_signal = mic_signal.shape[0] / self.target_fs
 				# pading or cut the source signal
@@ -211,8 +271,8 @@ class RealData(Dataset):
 				else:
 					input_mic_signal,signal_start,input_dp_signal = self.seg_signal(signal=mic_signal,fs = self.target_fs,dp_signal=dp_signal,rng=rng)
 					dp_vad = self.cal_vad(input_dp_signal)
-					target = self.all_targets.at[sig_path.split('RealMAN_modi/')[-1], 'angle(°)']
-					distance = self.all_targets.at[sig_path.split('RealMAN_modi/')[-1], 'distance']
+					target = self.all_targets.at[sig_path.split('RealMAN/')[-1], 'angle(°)']
+					distance = self.all_targets.at[sig_path.split('RealMAN/')[-1], 'distance']
 					if isinstance(target, float):
 						targets = torch.ones((self.target_len,1)) * int(target)
 						if distance < -100:
@@ -234,80 +294,97 @@ class RealData(Dataset):
 				distance_list.append(distances)
 			#set overlap mode
 			if self.max_source > 1:
-				# for 1-source
-				if rng.random() < 0.3:
-					dp_vad_list[1] = torch.zeros_like(dp_vad_list[1])
-					targets_list[1] = torch.zeros_like(targets_list[1])
-					distance_list[1] = torch.zeros_like(distance_list[1])
-					mic_signal_list[1] = torch.zeros_like(mic_signal_list[1])
-				else:
-					overlap_mode_idx = rng.choice([1, 2, 3, 4])
+
+				for spk_id in range(1, self.max_source):
+					# Always overlapping !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+					overlap_mode_idx = rng.choice([1])
+
 					if overlap_mode_idx == 1:
-						# Head-tail
-						for spk_id in range(self.max_source):
-							mask_len = rng.integers(0,10)
-							if spk_id == 0:	
-								dp_vad_list[spk_id][:mask_len] = 0
-								mic_signal_list[spk_id][:mask_len*1600,:] = 0
-								targets_list[spk_id][:mask_len] = 0
-								distance_list[spk_id][:mask_len] = 0
-							else:
-								dp_vad_list[spk_id][-mask_len:] = 0
-								mic_signal_list[spk_id][-mask_len*1600:,:] = 0
-								targets_list[spk_id][-mask_len:] = 0
-								distance_list[spk_id][-mask_len:] = 0								
+						# full overlap
+						pass
+
 					elif overlap_mode_idx == 2:
-						for spk_id in range(self.max_source):
-							if spk_id == 0:
-								mask_len = rng.integers(20,35)
-								mask_half = (40 - mask_len) / 2
-								dp_vad_list[spk_id][:int(mask_half)] = 0
-								mic_signal_list[spk_id][:int(1600*mask_half),:] = 0
-								targets_list[spk_id][:int(mask_half)] = 0
-								distance_list[spk_id][:int(mask_half)] = 0     
-								dp_vad_list[spk_id][-int(mask_half):] = 0
-								mic_signal_list[spk_id][-int(1600*mask_half):,:] = 0
-								targets_list[spk_id][-int(mask_half):] = 0 
-								distance_list[spk_id][-int(mask_half):] = 0      
+						# remove head part
+						mask_len = rng.integers(1, 20)
+
+						dp_vad_list[spk_id][:mask_len] = 0
+						mic_signal_list[spk_id][:mask_len * 1600, :] = 0
+						targets_list[spk_id][:mask_len] = 0
+						distance_list[spk_id][:mask_len] = 0
+
 					elif overlap_mode_idx == 3:
-						if rng.random() < 0.5:
-							for spk_id in range(self.max_source):
-								if spk_id == 0:
-									mask_len = rng.integers(0,20)
-									dp_vad_list[spk_id][:mask_len] = 0
-									mic_signal_list[spk_id][:mask_len*1600,:] = 0
-									targets_list[spk_id][:mask_len] = 0
-									distance_list[spk_id][:mask_len] = 0
-						else:
-							for spk_id in range(self.max_source):
-								if spk_id == 0:
-									mask_len = rng.integers(0,20)
-									dp_vad_list[spk_id][-mask_len:] = 0
-									mic_signal_list[spk_id][-mask_len*1600:,:] = 0
-									targets_list[spk_id][-mask_len:] = 0
-									distance_list[spk_id][-mask_len:] = 0
-					else:
-						pass	
-				dp_vad = torch.cat(dp_vad_list,dim=-1)
-				input_mic_signal = np.array(torch.sum(torch.cat(mic_signal_list,dim=-1),dim=-1))
-				targets = torch.cat(targets_list,dim=-1)
-				distances = torch.cat(distance_list,dim=-1)
-			noise_path = self.noise_paths[rng.integers(low=0, high=len(self.noise_paths))]
+						# remove tail part
+						mask_len = rng.integers(1, 20)
+
+						dp_vad_list[spk_id][-mask_len:] = 0
+						mic_signal_list[spk_id][-mask_len * 1600:, :] = 0
+						targets_list[spk_id][-mask_len:] = 0
+						distance_list[spk_id][-mask_len:] = 0
+
+				dp_vad = torch.cat(dp_vad_list, dim=-1)
+				input_mic_signal = np.array(torch.sum(torch.cat(mic_signal_list, dim=-1), dim=-1))
+				targets = torch.cat(targets_list, dim=-1)
+				distances = torch.cat(distance_list, dim=-1)
+
+			# Generating Noise
+			scene = get_speech_scene(sig_path_1)
+			scene_prefix = get_scene_prefix(scene)
+
+			candidate_noises = self.prefix_to_noise_paths.get(scene_prefix, [])
+
+			if len(candidate_noises) > 0:
+				noise_path = candidate_noises[rng.integers(low=0, high=len(candidate_noises))]
+				print(f"SAME NOISE {scene}, {noise_path}")
+			else:
+				noise_path = self.noise_paths[rng.integers(low=0, high=len(self.noise_paths))]
+				print(f"NO SAME NOISE {scene}")
+
 			wav_info = sf.info(noise_path)
+			noise_fs = wav_info.samplerate
 			wav_frames = wav_info.frames
-			noise_begin_index =  rng.integers(low=0, high=wav_frames-(self.wav_use_len*self.input_fs))
-			noise_end_index =  noise_begin_index + (self.wav_use_len*self.input_fs)
-			noise_signal,noise_fs = self.load_noise(noise_path,begin_index=noise_begin_index,end_index=noise_end_index,use_mic_id=use_mic_id_item)
+
+			needed_noise_frames = int(self.wav_use_len * noise_fs)   # 4 sec in original noise fs
+
+			if wav_frames < needed_noise_frames:
+				noise_begin_index = 0
+				noise_end_index = wav_frames
+			else:
+				noise_begin_index = rng.integers(0, wav_frames - needed_noise_frames + 1)
+				noise_end_index = noise_begin_index + needed_noise_frames
+
+			noise_signal, noise_fs = self.load_noise(
+				noise_path,
+				begin_index=noise_begin_index,
+				end_index=noise_end_index,
+				use_mic_id=use_mic_id_item
+			)
+
 			if noise_fs != self.target_fs:
-				noise_signal = self.resample(noise_signal,noise_fs,self.target_fs)
-			coeff =  self.get_snr_coff(input_mic_signal,noise_signal,snr_item)
-			try:
-				assert coeff is not None
-			except:
+				noise_signal = self.resample(noise_signal, noise_fs, self.target_fs)
+
+			# if too short after resampling, pad to match
+			if noise_signal.shape[0] < input_mic_signal.shape[0]:
+				padded = np.zeros_like(input_mic_signal)
+				padded[:noise_signal.shape[0], :] = noise_signal
+				noise_signal = padded
+			else:
+				noise_signal = noise_signal[:input_mic_signal.shape[0], :]
+
+			coeff = self.get_snr_coff(input_mic_signal, noise_signal, snr_item)
+			if coeff is None:
 				coeff = 1.0
+
 			noise_signal = coeff * noise_signal
-			input_mic_signal += noise_signal
+			input_mic_signal = input_mic_signal + noise_signal
 			array_topo = self.pos_mics[use_mic_id_item]
+
+			print("Number of selected sources:", len(sig_path_list))
+			print("Number of mic signals:", len(mic_signal_list))
+			print("targets shape:", targets.shape)
+			print("distances shape:", distances.shape)
+			print("vad shape:", dp_vad.shape)
+			print("Active sources per frame:", (distances > 0).sum(dim=1))
+
 			return input_mic_signal,targets.to(torch.float32),dp_vad.to(torch.float32),array_topo,distances.to(torch.float32)
 
 		else:

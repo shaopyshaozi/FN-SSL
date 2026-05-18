@@ -55,6 +55,7 @@ dataset_val = RealData(
 
 dataset_test = RealData(
     data_dir='/mnt/e/RealMAN/test_gen',
+    #data_dir='/mnt/d/邵鹏远/UCL/博1/code/FN-SSL/IPDnet2/test_data/test_gen',
     target_dir=None,
     noise_dir=None,
     use_mic_id=[1,3,5,7,0],
