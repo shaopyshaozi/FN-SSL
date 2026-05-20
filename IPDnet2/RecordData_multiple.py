@@ -178,7 +178,7 @@ class RealData(Dataset):
 				snr_item = rng.uniform(self.SNR[0], self.SNR[1])
 				mic_signal, fs = self.load_signals(sig_path,use_mic_id=use_mic_id_item)
 				if fs != self.target_fs:
-					print('--------------------')
+					#print('--------------------')
 					mic_signal = self.resample(mic_signal=mic_signal,fs=fs,new_fs=self.target_fs)
 				len_signal = mic_signal.shape[0] / self.target_fs
 				# pading or cut the source signal
@@ -315,12 +315,12 @@ class RealData(Dataset):
 			input_mic_signal = input_mic_signal + noise_signal
 			array_topo = self.pos_mics[use_mic_id_item]
 
-			print("Number of selected sources:", len(sig_path_list))
-			print("Number of mic signals:", len(mic_signal_list))
-			print("targets shape:", targets.shape)
-			print("distances shape:", distances.shape)
-			print("vad shape:", dp_vad.shape)
-			print("Active sources per frame:", (distances > 0).sum(dim=1))
+			# print("Number of selected sources:", len(sig_path_list))
+			# print("Number of mic signals:", len(mic_signal_list))
+			# print("targets shape:", targets.shape)
+			# print("distances shape:", distances.shape)
+			# print("vad shape:", dp_vad.shape)
+			# print("Active sources per frame:", (distances > 0).sum(dim=1))
 
 			return input_mic_signal,targets.to(torch.float32),dp_vad.to(torch.float32),array_topo,distances.to(torch.float32)
 

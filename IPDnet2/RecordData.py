@@ -171,7 +171,7 @@ class RealData(Dataset):
 				snr_item = rng.uniform(self.SNR[0], self.SNR[1])
 				mic_signal, fs = self.load_signals(sig_path,use_mic_id=use_mic_id_item)
 				if fs != self.target_fs:
-					print('--------------------')
+					#print('--------------------')
 					mic_signal = self.resample(mic_signal=mic_signal,fs=fs,new_fs=self.target_fs)
 				len_signal = mic_signal.shape[0] / self.target_fs
 				# pading or cut the source signal

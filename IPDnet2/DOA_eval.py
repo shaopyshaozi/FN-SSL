@@ -124,9 +124,9 @@ def postprocess_one_sample(
 
 
 final_doas = postprocess_one_sample(
-    doaest_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\hidden96_fre128\0_doaest.npy",
-    vadest_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\hidden96_fre128\0_vadest.npy",
-    sample_idx=4,
-    num_sources=2,
-    vad_th=0.4,
+    doaest_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant\4_doaest.npy",
+    vadest_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant\4_vadest.npy",
+    sample_idx=0,
+    num_sources=3,
+    vad_th=0.2,
 )

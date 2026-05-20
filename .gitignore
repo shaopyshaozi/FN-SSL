@@ -6,3 +6,8 @@
 /IPDnet2/hidden96_fre128
 /IPDnet2/hidden96_fre128_2batch
 /IPDnet2/test_data/test_gen
+/IPDnet2/inference_results
+/IPDnet2/inference_results_dominant
+/IPDnet2/lightning_logs
+/IPDnet2/logs
+/IPDnet2/RealMAN

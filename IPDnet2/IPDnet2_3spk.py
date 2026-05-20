@@ -360,8 +360,8 @@ class OnlineSpatialNet(nn.Module):
         x = x.permute(0,3,2,1)
         x = self.decoder(x)
         B,F,T_,_ = x.shape
-        x = x.permute(0,2,1,3).reshape(B,T_,F,2,-1).permute(0,1,3,2,4) 
-        x = x.reshape(B,T_,2,F*2,-1).permute(0,1,3,4,2)        
+        x = x.permute(0,2,1,3).reshape(B,T_,F,3,-1).permute(0,1,3,2,4) 
+        x = x.reshape(B,T_,3,F*2,-1).permute(0,1,3,4,2)        
         if return_attn_score:
             return x.contiguous(), attns
         else:
