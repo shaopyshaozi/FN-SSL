@@ -208,7 +208,7 @@ class MyModel(LightningModule):
         loss = self.cal_loss(pred_batch=pred_batch, gt_batch=gt_batch)
 
         self.log("valid/loss", loss, sync_dist=True)
-        get_metric = at_module.PredDOA(mic_location=gt_batch[-3])
+        get_metric = at_module.PredDOA(mic_location=gt_batch[-3], max_track=3) # Define number of sources manually here~!!!!!!!!
         metric = get_metric(pred_batch=pred_batch,gt_batch=gt_batch,idx=None)
         for m in metric:
             self.log('valid/'+m, metric[m].item(), sync_dist=True)      
@@ -232,7 +232,7 @@ class MyModel(LightningModule):
             gt_batch[-2] = gt_batch[-2][:, :pred_batch.shape[1], :]
         loss,gt_batch_ipd,pred_batch_ipd  = self.cal_loss(pred_batch=pred_batch, gt_batch=gt_batch,mode='test')
         self.log("test/loss", loss, sync_dist=True)
-        get_metric = at_module.PredDOA(mic_location=gt_batch[-3])
+        get_metric = at_module.PredDOA(mic_location=gt_batch[-3], max_track=3) # Define number of sources manually here~!!!!!!!!
         metric = get_metric(pred_batch=pred_batch,gt_batch=gt_batch,idx=batch_idx,gt_batch_ipd=gt_batch_ipd,pred_batch_ipd=pred_batch_ipd,dir_name='./hidden96_fre128/')
         for m in metric:
             self.log('test/'+m, metric[m].item(), sync_dist=True)
@@ -257,7 +257,7 @@ class MyModel(LightningModule):
 
         doa_decoder = at_module.PredDOA_Inference(
             mic_location=mic_location,
-            max_track=3,
+            max_track=3,                            # Define number of sources manually here~!!!!!!!!
             max_num_sources=1,
             dev=self.dev
         )
