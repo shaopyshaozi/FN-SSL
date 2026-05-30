@@ -31,9 +31,26 @@ if args.dev:
 
 speed = 343.0	
 fs = 16000
-T = 4.5 # Trajectory length (s) 
-traj_points = 50 # number of RIRs per trajectory
-array_setup = at_dataset.dualch_array_setup
+T = 4 # Trajectory length (s) 
+traj_points = 40 # number of RIRs per trajectory
+array_setup = at_dataset.respeaker4_array_setup
+
+# Transform
+win_len = 512
+win_shift_ratio = 0.5
+seg_fra_ratio = 12
+
+seg_len = int(win_len * win_shift_ratio * (seg_fra_ratio + 1))  # 3328
+seg_shift = int(win_len * win_shift_ratio * seg_fra_ratio)      # 3072
+
+print(seg_len, seg_shift)
+
+segmenting = at_dataset.Segmenting_SRPDNN(
+    K=seg_len,
+    step=seg_shift,
+    window=None
+)
+
 # Source signal
 sourceDataset = at_dataset.LibriSpeechDataset(
 	path = dirs['sousig_'+stage], 
@@ -67,17 +84,30 @@ dataset = at_dataset.RandomTrajectoryDataset(
 	nb_points = traj_points,	# Simulate RIRs per trajectory
 	min_dis = Parameter(0.5),
 	c = speed, 
-	transforms = []
+	transforms = [segmenting]
 	)
-	# Data generation
-save_dir = 'data/'+stage+'/'
-exist_temp = os.path.exists(save_dir)
-if exist_temp==False:
-	os.makedirs(save_dir)
-	print('make dir: ' + save_dir)
+
+# Data generation
+save_dir = os.path.join("/mnt/e/generated_data", stage)
+
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
+    print('make dir: ' + save_dir)
+
 print(data_num)
+
 for idx in tqdm.tqdm(range(data_num)):
-	mic_signals, acoustic_scene = dataset[idx]    
-	sig_path = save_dir + '/' + str(idx) + '.wav'
-	acous_path = save_dir + '/' + str(idx) + '.npz'
-	save_file(mic_signals, acoustic_scene, sig_path, acous_path)
+    sig_path = os.path.join(save_dir, f"{idx}.wav")
+    acous_path = os.path.join(save_dir, f"{idx}.npz")
+
+    if os.path.exists(sig_path) and os.path.exists(acous_path):
+        continue
+
+    tmp_sig_path = sig_path + ".tmp.wav"
+    tmp_acous_path = acous_path + ".tmp"
+
+    mic_signals, acoustic_scene = dataset[idx]
+    save_file(mic_signals, acoustic_scene, tmp_sig_path, tmp_acous_path)
+
+    os.replace(tmp_sig_path, sig_path)
+    os.replace(tmp_acous_path, acous_path)

@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, Dataset, DistributedSampler
 import numpy as np
 import Dataset as at_dataset
 import Module as at_module
-import IPDnet.FixedAarryIPDnet as at_model
+import FixedAarryIPDnet as at_model
 from utils.flops import write_FLOPs
 from utils.my_save_config_callback import MySaveConfigCallback as SaveConfigCallback
 from utils import tag_and_log_git_status
@@ -43,19 +43,19 @@ segmenting = at_dataset.Segmenting_SRPDNN(
 
 dataset_train = at_dataset.FixTrajectoryDataset(
     data_dir=dirs['sensig_train'],
-    dataset_sz=300000,
-    transforms=[segmenting]
+    dataset_sz=30,
+    transforms=None
 )
 dataset_dev = at_dataset.FixTrajectoryDataset(
     data_dir=dirs['sensig_dev'],
-    dataset_sz=4000,
-    transforms=[segmenting]
+    dataset_sz=40,
+    transforms=None
 )
-dataset_test = at_dataset.FixTrajectoryDataset(
-    data_dir=dirs['sensig_test'],
-    dataset_sz=4000,
-    transforms=[segmenting]
-)
+# dataset_test = at_dataset.FixTrajectoryDataset(
+#     data_dir=dirs['sensig_test'],
+#     dataset_sz=4000,
+#     transforms=[segmenting]
+# )
 
 class MyDataModule(LightningDataModule):
     
@@ -74,8 +74,8 @@ class MyDataModule(LightningDataModule):
     def val_dataloader(self) -> DataLoader:
         return DataLoader(dataset_dev, batch_size=self.batch_size[1], num_workers=self.num_workers)
     
-    def test_dataloader(self) -> DataLoader:
-        return DataLoader(dataset_test, batch_size=self.batch_size[1], num_workers=self.num_workers)
+    # def test_dataloader(self) -> DataLoader:
+    #     return DataLoader(dataset_test, batch_size=self.batch_size[1], num_workers=self.num_workers)
     
 class MyModel(LightningModule):
     def __init__(
@@ -88,17 +88,22 @@ class MyModel(LightningModule):
             win_len: int = 512,
             nfft: int = 512,
             win_shift_ratio: float = 0.5,
-            max_source: int = 2,
+            max_source: int = 3,
             device: str = 'cuda',
-            mic_pos: Tensor = torch.tensor((((-0.04, 0.0, 0.0),(0.04, 0.0, 0.0),))),
+            mic_pos: Tensor = torch.tensor(at_dataset.respeaker4_array_setup.mic_pos, dtype=torch.float32),
             compile: bool = False,
-            is_linear_array: bool = True,
+            is_linear_array: bool = False,
             is_planar_array: bool = True, # both lienar and planar only affect the mapping from IPD to DOA
             exp_name: str = 'exp',
     ):
         super().__init__()
         # for 2-mic IPDnet
-        self.arch = at_model.IPDnet()
+        self.arch = at_model.IPDnet(
+            input_size=8,      # 4 mics × real/imag
+            hidden_size=128,   # recommended for 4-mic fixed array
+            max_track=3,       # 3 sources
+            is_online=True
+        )
         if compile:
             assert Version(torch.__version__) >= Version(
                 '2.0.0'), torch.__version__
@@ -124,7 +129,13 @@ class MyModel(LightningModule):
         self.removebatch = at_module.RemoveChFromBatch(ch_mode=self.ch_mode)
         self.fre_range_used = range(1, int(self.nfft/2)+1, 1)
         # Mapping IPD to DOA and calculate metrics
-        self.get_metric = at_module.PredDOA(mic_location=self.mic_pos,is_linear_array=is_linear_array,is_planar_array=is_planar_array)
+        self.get_metric = at_module.PredDOA(
+            mic_location=self.mic_pos,
+            max_track=3,
+            max_num_sources=1,
+            is_linear_array=False,
+            is_planar_array=True
+        )
         self.dev = device
     def forward(self, x):
         return self.arch(x)
@@ -199,7 +210,13 @@ class MyModel(LightningModule):
         pred_batch = pred_batch.reshape(nb*nt, -1, nsrc).permute(0,2,1)
         ipd_gt_batch = ipd_gt_batch.reshape(nb*nt,-1,nsrc).permute(0,2,1)
         pred_batch = pred_batch.to(self.dev)
-        best_metric, best_perm = permutation_invariant_training(pred_batch, ipd_gt_batch, self.MSE_loss, 'min')
+        best_metric, best_perm = permutation_invariant_training(
+            pred_batch,
+            ipd_gt_batch,
+            self.MSE_loss,
+            mode="speaker-wise",
+            eval_func="min"
+        )
         pred_batch= pit_permutate(pred_batch, best_perm)
         loss = torch.nn.functional.mse_loss(
             pred_batch.contiguous(), ipd_gt_batch.contiguous())
@@ -240,8 +257,9 @@ class MyModel(LightningModule):
         stft = self.dostft(signal=mic_sig_batch)
         nb,nf,nt,nc = stft.shape
         #Using DP-signal to calculate VAD
-        dp_mic_sig_batch = acoustic_scene_batch['dp_signal'] 
-        dp_vad = self.cal_vad(dp_mic_sig_batch=dp_mic_sig_batch,stft=stft)
+        # dp_mic_sig_batch = acoustic_scene_batch['dp_signal'] 
+        # dp_vad = self.cal_vad(dp_mic_sig_batch=dp_mic_sig_batch,stft=stft)
+        dp_vad = acoustic_scene_batch["dp_vad"].to(self.dev)
         
         stft_rebatch = stft.permute(0, 3, 1, 2)
         stft_rebatch = stft_rebatch.to(self.dev)
@@ -330,15 +348,15 @@ class MyCLI(LightningCLI):
         parser.set_defaults(model_checkpoint_defaults)
 
         # RichProgressBar
-        parser.add_lightning_class_args(
-            RichProgressBar, nested_key='progress_bar')
-        parser.set_defaults({
-            "progress_bar.console_kwargs": {
-                "force_terminal": True,
-                "no_color": True,  
-                "width": 200,  
-            }
-        })
+        # parser.add_lightning_class_args(
+        #     RichProgressBar, nested_key='progress_bar')
+        # parser.set_defaults({
+        #     "progress_bar.console_kwargs": {
+        #         "force_terminal": True,
+        #         "no_color": True,  
+        #         "width": 200,  
+        #     }
+        # })
 
         # LearningRateMonitor
         parser.add_lightning_class_args(

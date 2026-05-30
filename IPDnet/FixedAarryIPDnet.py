@@ -111,12 +111,12 @@ class IPDnet(nn.Module):
         x = x.permute(0,3,2,1)
         
         nt2 = nt//12
-        x = self.conv(x).permute(0,3,2,1).reshape(nb,nt2,nf,2,-1).permute(0,1,3,2,4)
+        x = self.conv(x).permute(0,3,2,1).reshape(nb,nt2,nf,3,-1).permute(0,1,3,2,4)
         if not self.is_online and offline_inference: 
             x = x.reshape(nb//nseg,nt2*nseg,2,nf*2,-1).permute(0,1,3,4,2)
             output = x[:,:ou_frame,:,:,:]
         else:
-            output = x.reshape(nb,nt2,2,nf*2,-1).permute(0,1,3,4,2)
+            output = x.reshape(nb,nt2,3,nf*2,-1).permute(0,1,3,4,2)
         return output
   
 

@@ -11,3 +11,8 @@
 /IPDnet2/lightning_logs
 /IPDnet2/logs
 /IPDnet2/RealMAN
+/IPDnet2/inference_results_70
+/IPDnet2/inference_results_dominant_70
+/IPDnet/__pycache__
+/IPDnet/logs
+/IPDnet/utils/__pycache__

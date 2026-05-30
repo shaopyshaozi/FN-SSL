@@ -81,13 +81,27 @@ def sph2cart(sph):
 
 ## for room acoustic data saving and reading 
 def save_file(mic_signal, acoustic_scene, sig_path, acous_path):
-    
     if sig_path is not None:
         soundfile.write(sig_path, mic_signal, acoustic_scene.fs)
 
     if acous_path is not None:
-        file = open(acous_path,'wb')
-        file.write(pickle.dumps(acoustic_scene.__dict__))
+        compact_scene = {
+            # segmented DOA, shape: (20, 2, nsource)
+            "DOAw": acoustic_scene.DOAw.astype("float32"),
+
+            # segmented/windowed VAD, shape: (20, 3328, nsource)
+            "mic_vad_sources": acoustic_scene.mic_vad_sources.astype("float32"),
+
+            # metadata needed for model / checking
+            "fs": acoustic_scene.fs,
+            "SNR": acoustic_scene.SNR,
+            "T60": acoustic_scene.T60,
+            "mic_pos": acoustic_scene.mic_pos.astype("float32"),
+            "array_setup": acoustic_scene.array_setup,
+        }
+
+        file = open(acous_path, "wb")
+        file.write(pickle.dumps(compact_scene))
         file.close()
 
 def load_file(acoustic_scene, sig_path, acous_path):

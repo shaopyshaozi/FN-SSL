@@ -96,6 +96,22 @@ dualch_array_setup = ArraySetup(arrayType='linear',
 	mic_pattern = 'omni',
 )
 
+r = 0.031  # radius in metres, check your ReSpeaker exact radius
+
+respeaker4_array_setup = ArraySetup(
+    arrayType='planar',
+    orV=np.array([0.0, 1.0, 0.0]),
+    mic_scale=Parameter(1),
+    mic_pos=np.array((
+        ( r/np.sqrt(2),  r/np.sqrt(2), 0.0),   # 45°
+        (-r/np.sqrt(2),  r/np.sqrt(2), 0.0),   # 135°
+        (-r/np.sqrt(2), -r/np.sqrt(2), 0.0),   # 225°
+        ( r/np.sqrt(2), -r/np.sqrt(2), 0.0),   # 315°
+    )),
+    mic_orV=None,
+    mic_pattern='omni',
+)
+
 class AcousticScene:
 	""" Acoustic scene class.
 	"""
@@ -515,21 +531,13 @@ class FixTrajectoryDataset(Dataset):
 
 		if self.return_acoustic_scene:
 			return mic_signals, acoustic_scene
-		else: 
+		else:
 			gts = {}
-			gts['doa'] = np.zeros(((23, 2, 2)))
-			gts['vad_sources'] = np.zeros(((23, 3328, 2)))
-			gts['num_source'] = acoustic_scene.mic_vad_sources.shape[-1]
-			gts['array_setup'] = acoustic_scene.array_setup.mic_pos
-			gts['dp_signal'] = np.zeros((72000, 2, 2))
-			if gts['num_source'] == 1:
-				gts['doa'][:,:,:1] = acoustic_scene.DOAw
-				gts['vad_sources'][:,:,:1] = acoustic_scene.mic_vad_sources
-				gts['dp_signal'][:,:,:1] = acoustic_scene.dp_mic_signals_sources
-			else:
-				gts['doa'][:,:,:] = acoustic_scene.DOAw
-				gts['vad_sources'][:,:,:] = acoustic_scene.mic_vad_sources
-				gts['dp_signal'][:,:,:] = acoustic_scene.dp_mic_signals_sources
+			gts["doa"] = acoustic_scene.DOAw.astype(np.float32)
+			gts["vad_sources"] = acoustic_scene.mic_vad_sources.astype(np.float32)
+			gts["num_source"] = acoustic_scene.mic_vad_sources.shape[-1]
+			gts["array_setup"] = acoustic_scene.mic_pos
+			gts["dp_vad"] = acoustic_scene.mic_vad_sources.mean(axis=1).astype(np.float32)
 
 			return mic_signals, gts
 

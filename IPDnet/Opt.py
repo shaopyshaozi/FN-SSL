@@ -30,26 +30,27 @@ class opt():
     def dir(self):
         """ Function: Get directories of code, data and experimental results
         """ 
-        work_dir = r'.'
-        work_dir = os.path.abspath(os.path.expanduser(work_dir))
         dirs = {}
 
-        dirs['data'] = work_dir + '/data'
+        dirs['data'] = "/mnt/e/"
 
         # source data
-        dirs['sousig_train'] = dirs['data'] + '/libri/train-clean-100'
-        dirs['sousig_test'] = dirs['data'] + '/LibriSpeech/test-clean'
-        dirs['sousig_dev'] = dirs['data'] + '/LibriSpeech/dev-clean'
-        # noise data/can be replaced by any other noise dataset [e.g. REALMAN]
-        dirs['noisig_train'] = dirs['data'] + '/NoiSig/Noise92'
-        dirs['noisig_test'] = dirs['data'] + '/NoiSig/Noise92'
-        dirs['noisig_dev'] = dirs['data'] + '/NoiSig/Noise92'
-        # experimental data
-        dirs['sensig_train'] = dirs['data'] + '/train'
-        dirs['sensig_dev'] = dirs['data'] + '/dev'
-        dirs['sensig_test'] = dirs['data'] + '/test'
-        # experimental data
-        dirs['sensig_locata'] = dirs['data'] + '/LOCATA' 
+        dirs['sousig_train'] = dirs['data'] + 'LibriSpeech/train-clean-100/LibriSpeech/train-clean-100'
+        dirs['sousig_test'] = dirs['data'] + 'LibriSpeech/test-clean/LibriSpeech/test-clean'
+        dirs['sousig_dev'] = dirs['data'] + 'LibriSpeech/dev-clean/LibriSpeech/dev-clean'
+
+        # noise data
+        dirs['noisig_train'] = dirs['data'] + 'Noises-master/NoiseX-92'
+        dirs['noisig_test'] = dirs['data'] + 'Noises-master/NoiseX-92'
+        dirs['noisig_dev'] = dirs['data'] + 'Noises-master/NoiseX-92'
+
+        # generated data
+        dirs['sensig_train'] = dirs['data'] + 'generated_data/train'
+        dirs['sensig_dev'] = dirs['data'] + 'generated_data/dev'
+        dirs['sensig_test'] = dirs['data'] + 'generated_data/test'
+
+        dirs['sensig_locata'] = dirs['data'] + 'LOCATA'
+
         return dirs
 
 if __name__ == '__main__':
