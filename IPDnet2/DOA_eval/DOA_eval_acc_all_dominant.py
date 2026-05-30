@@ -268,9 +268,9 @@ def evaluate_one_file_with_csv(
 results=[]
 for scene_index in tqdm(range(1200)):
     result = evaluate_one_file_with_csv(
-        doaest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant\{scene_index}_doaest.npy",
-        vadest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant\{scene_index}_vadest.npy",
-        csv_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant\ground_truth.csv",
+        doaest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant_70\{scene_index}_doaest.npy",
+        vadest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant_70\{scene_index}_vadest.npy",
+        csv_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant_70\ground_truth.csv",
         scene_index=scene_index,
         sample_idx=0,
         num_sources=3,

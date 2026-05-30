@@ -85,6 +85,7 @@ def postprocess_one_sample(
     min_points_per_source=3,
     plot=True,
     plot_cluster=True,
+    gt_doas=None,
 ):
     doa_est = np.load(doaest_path)   # [B, T, 2, K]
     vad_est = np.load(vadest_path)   # [B, T, K]
@@ -100,12 +101,24 @@ def postprocess_one_sample(
     # -----------------------------
     # 1. Plot original predicted tracks
     # -----------------------------
+
+
     if plot:
         plt.figure(figsize=(10, 4))
 
         for k in range(K):
             y = np.where(active[:, k], azi[:, k], np.nan)
             plt.plot(time_axis, y, marker="o", label=f"Pred track {k}")
+
+        if gt_doas is not None:
+            for gt in gt_doas:
+                plt.axhline(
+                    y=gt,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1.5,
+                    label=f"GT {gt:.1f}°"
+                )
 
         plt.xlabel("Time (s)")
         plt.ylabel("Estimated azimuth (degree, 0-360)")
@@ -172,6 +185,16 @@ def postprocess_one_sample(
                 label=f"Cluster {src_id}",
             )
 
+        if gt_doas is not None:
+            for gt in gt_doas:
+                plt.axhline(
+                    y=gt,
+                    color="black",
+                    linestyle="--",
+                    linewidth=1.5,
+                    label=f"GT {gt:.1f}°"
+                )
+
         plt.xlabel("Time (s)")
         plt.ylabel("Estimated azimuth (degree, 0-360)")
         plt.title("Clustered predicted DOA points")
@@ -229,6 +252,7 @@ def evaluate_one_file_with_csv(
         num_sources=num_sources,
         vad_th=vad_th,
         plot=True,
+        gt_doas=gt_doas,
     )
 
     pairs, num_correct, num_missed, correct_errors = best_match_doa(
@@ -255,7 +279,7 @@ def evaluate_one_file_with_csv(
     }
 
 
-scene_index=100
+scene_index=0
 
 result = evaluate_one_file_with_csv(
         doaest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results\{scene_index}_doaest.npy",

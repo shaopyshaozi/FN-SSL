@@ -13,6 +13,7 @@ az_est = doa_est[:, :, 1, :]
 az_gt  = doa_gt[:, :, 1, :]
 
 B, T, S = az_est.shape
+print(az_est.shape)
 all_errors = []
 
 for b in range(B):

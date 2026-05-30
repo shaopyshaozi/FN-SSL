@@ -45,14 +45,14 @@ from Module import DPIPD2
 #     max_source=3,
 # )
 
-# dataset_val = RealData(
-#     data_dir='/mnt/e/RealMAN/val_gen_1/',
-#     target_dir=None,
-#     noise_dir=None,
-#     use_mic_id=[2,4,6,8],
-#     max_source=3,
-#     on_the_fly=False,
-# )
+dataset_val = RealData(
+    data_dir='/mnt/e/RealMAN/val_gen_3spk/',
+    target_dir=None,
+    noise_dir=None,
+    use_mic_id=[2,4,6,8],
+    max_source=3,
+    on_the_fly=False,
+)
 
 # dataset_test = RealData(
 #     data_dir='/mnt/e/RealMAN/test_gen_1/',
@@ -65,7 +65,7 @@ from Module import DPIPD2
 # )
 
 dataset_predict = InferenceDataset(
-    data_dir='/mnt/d/邵鹏远/UCL/博1/code/Whisper_ASR/data/dataset_4mic_3spk_dominant/Eval/mic'
+    data_dir='/mnt/d/邵鹏远/UCL/博1/code/Whisper_ASR/data/dataset_4mic_3spk/Eval/mic'
 )
 
 class MyDataModule(LightningDataModule):
@@ -83,8 +83,8 @@ class MyDataModule(LightningDataModule):
     # def train_dataloader(self) -> DataLoader:
     #     return DataLoader(dataset_train,sampler=MyDistributedSampler(dataset=dataset_train,seed=2,shuffle=True), batch_size=self.batch_size[0], num_workers=self.num_workers)
 
-    # def val_dataloader(self) -> DataLoader:
-    #     return DataLoader(dataset_val, sampler=MyDistributedSampler(dataset=dataset_val,seed=2,shuffle=False),batch_size=self.batch_size[1], num_workers=self.num_workers)
+    def val_dataloader(self) -> DataLoader:
+        return DataLoader(dataset_val, sampler=MyDistributedSampler(dataset=dataset_val,seed=2,shuffle=False),batch_size=self.batch_size[1], num_workers=self.num_workers)
         
     # def test_dataloader(self) -> DataLoader:
     #     return DataLoader(dataset_test, sampler=MyDistributedSampler(dataset=dataset_test,seed=2,shuffle=False),batch_size=self.batch_size[1], num_workers=self.num_workers)
@@ -265,7 +265,7 @@ class MyModel(LightningModule):
         out = doa_decoder(
             pred_batch=pred_ipd,
             idx=batch_idx,
-            dir_name='./inference_results_dominant/'
+            dir_name='./inference_results_70/'
         )
 
         return out
