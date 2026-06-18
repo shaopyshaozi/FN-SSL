@@ -2,8 +2,8 @@ import pickle
 import numpy as np
 import soundfile as sf
 
-npz_path = "/mnt/e/generated_data/test/0.npz"
-audio_path = "/mnt/e/generated_data/test/0.wav"
+npz_path = "/mnt/e/generated_data/train/0.npz"
+audio_path = "/mnt/e/generated_data/train/0.wav"
 
 audio, fs = sf.read(audio_path)
 

@@ -3,6 +3,8 @@ from typing import Callable
 from utils_ import forgetting_norm
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 import numpy as np
+import re
+import soundfile
 import Dataset as at_dataset
 import Module as at_module
 import FixedAarryIPDnet as at_model
@@ -41,21 +43,55 @@ seg_shift = int(win_len*win_shift_ratio*seg_fra_ratio)
 segmenting = at_dataset.Segmenting_SRPDNN(
     K=seg_len, step=seg_shift, window=None)
 
-dataset_train = at_dataset.FixTrajectoryDataset(
-    data_dir=dirs['sensig_train'],
-    dataset_sz=30,
-    transforms=None
-)
-dataset_dev = at_dataset.FixTrajectoryDataset(
-    data_dir=dirs['sensig_dev'],
-    dataset_sz=40,
-    transforms=None
-)
-# dataset_test = at_dataset.FixTrajectoryDataset(
-#     data_dir=dirs['sensig_test'],
-#     dataset_sz=4000,
-#     transforms=[segmenting]
+# dataset_train = at_dataset.FixTrajectoryDataset(
+#     data_dir=dirs['sensig_train'],
+#     dataset_sz=30,
+#     transforms=None
 # )
+# dataset_dev = at_dataset.FixTrajectoryDataset(
+#     data_dir=dirs['sensig_dev'],
+#     dataset_sz=40,
+#     transforms=None
+# )
+dataset_test = at_dataset.FixTrajectoryDataset(
+    data_dir=dirs['sensig_test'],
+    dataset_sz=4000,
+    transforms=None
+)
+
+class InferenceDataset(Dataset):
+    def __init__(self, data_dir):
+        items = []
+        for root, _, files in os.walk(data_dir):
+            for fname in files:
+                if not fname.endswith('.wav'):
+                    continue
+                match = re.search(r'fileid_(\d+)', fname)
+                if match is None:
+                    continue
+                items.append((int(match.group(1)), os.path.join(root, fname)))
+
+        items = sorted(items, key=lambda item: (item[0], item[1]))
+
+        selected = {}
+        for fileid, path in items:
+            if fileid not in selected:
+                selected[fileid] = path
+
+        self.data_paths = list(selected.values())
+
+    def __len__(self):
+        return len(self.data_paths)
+
+    def __getitem__(self, idx):
+        sig_path = self.data_paths[idx]
+        input_mic_signal, fs = soundfile.read(sig_path)
+        input_mic_signal = np.asarray(input_mic_signal, dtype=np.float32)
+        return input_mic_signal
+
+dataset_predict = InferenceDataset(
+    data_dir='/mnt/d/邵鹏远/UCL/博1/code/Whisper_ASR/data/dataset_4mic_3spk/Eval/mic'
+)
 
 class MyDataModule(LightningDataModule):
     
@@ -68,14 +104,22 @@ class MyDataModule(LightningDataModule):
     def prepare_data(self) -> None:
         return super().prepare_data()
 
-    def train_dataloader(self) -> DataLoader:
-        return DataLoader(dataset_train, batch_size=self.batch_size[0], num_workers=self.num_workers,shuffle=True)
+    # def train_dataloader(self) -> DataLoader:
+    #     return DataLoader(dataset_train, batch_size=self.batch_size[0], num_workers=self.num_workers,shuffle=True)
     
-    def val_dataloader(self) -> DataLoader:
-        return DataLoader(dataset_dev, batch_size=self.batch_size[1], num_workers=self.num_workers)
+    # def val_dataloader(self) -> DataLoader:
+    #     return DataLoader(dataset_dev, batch_size=self.batch_size[1], num_workers=self.num_workers)
     
-    # def test_dataloader(self) -> DataLoader:
-    #     return DataLoader(dataset_test, batch_size=self.batch_size[1], num_workers=self.num_workers)
+    def test_dataloader(self) -> DataLoader:
+        return DataLoader(dataset_test, batch_size=self.batch_size[1], num_workers=self.num_workers)
+
+    def predict_dataloader(self) -> DataLoader:
+        return DataLoader(
+            dataset_predict,
+            batch_size=1,
+            shuffle=False,
+            num_workers=0
+        )
     
 class MyModel(LightningModule):
     def __init__(
@@ -83,7 +127,7 @@ class MyModel(LightningModule):
             tar_useVAD: bool = True,
             ch_mode: str = 'M',
             res_the: int = 1,
-            res_phi: int = 180,
+            res_phi: int = 360,
             fs: int = 16000,
             win_len: int = 512,
             nfft: int = 512,
@@ -133,6 +177,7 @@ class MyModel(LightningModule):
             mic_location=self.mic_pos,
             max_track=3,
             max_num_sources=1,
+            res_phi=res_phi,
             is_linear_array=False,
             is_planar_array=True
         )
@@ -191,10 +236,27 @@ class MyModel(LightningModule):
             self.log('test/'+m, metric[m].item(), sync_dist=True)
 
     def predict_step(self, batch, batch_idx: int):
-        data_batch = self.data_preprocess(mic_sig_batch=batch.permute(0,2,1))
-        in_batch = data_batch[0]        
-        preds = self.forward(in_batch)
-        return preds[0]
+        data_batch = self.data_preprocess_inference(mic_sig_batch=batch)
+        in_batch = data_batch[0]
+        pred_ipd = self.forward(in_batch)
+        pred_batch, _ = self.get_metric.pred2DOA(pred_batch=pred_ipd, gt_batch=None)
+
+        doa_est = pred_batch[0] * 180 / np.pi
+        vad_est = pred_batch[1].to(self.dev)
+        pred_spatial_spectrum = pred_batch[2]
+
+        results_dir = './inference_results'
+        os.makedirs(results_dir, exist_ok=True)
+        np.save(os.path.join(results_dir, str(batch_idx) + '_doaest'), doa_est.cpu().numpy())
+        np.save(os.path.join(results_dir, str(batch_idx) + '_vadest'), vad_est.cpu().numpy())
+        np.save(os.path.join(results_dir, str(batch_idx) + '_ipd'), pred_ipd.detach().cpu().numpy())
+        np.save(os.path.join(results_dir, str(batch_idx) + '_spectrum'), pred_spatial_spectrum.detach().cpu().numpy())
+
+        return {
+            "doa_est": doa_est,
+            "vad_est": vad_est,
+            "pred_ipd": pred_ipd,
+        }
 
     def MSE_loss(self, preds, targets):
         nbatch = preds.shape[0]
@@ -305,6 +367,21 @@ class MyModel(LightningModule):
         data += [ipd_batch]
         if self.tar_useVAD:
             data += [dp_vad]
+        return data 
+
+    def data_preprocess_inference(self, mic_sig_batch=None, eps=1e-6):
+        data = []
+        stft = self.dostft(signal=mic_sig_batch)
+
+        stft_rebatch = stft.permute(0, 3, 1, 2).to(self.dev)
+        mag = torch.abs(stft_rebatch)
+        mean_value = forgetting_norm(mag, sample_length=280)
+        stft_rebatch_real = torch.real(stft_rebatch) / (mean_value + eps)
+        stft_rebatch_image = torch.imag(stft_rebatch) / (mean_value + eps)
+        real_image_batch = torch.cat(
+            (stft_rebatch_real, stft_rebatch_image), dim=1)
+
+        data += [real_image_batch[:, :, self.fre_range_used, :]]
         return data 
     
     def configure_optimizers(self):

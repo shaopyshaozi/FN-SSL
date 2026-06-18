@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -331,8 +332,13 @@ class DPIPD(nn.Module):
 	""" Complex-valued Direct-path inter-channel phase difference	
 	"""
 
-	def __init__(self, ndoa_candidate, mic_location, nf=257, fre_max=8000, ch_mode='M', speed=343.0, search_space_azi=[0,np.pi],search_space_ele=[np.pi/2,np.pi/2]):
+	def __init__(self, ndoa_candidate, mic_location, nf=257, fre_max=8000, ch_mode='M', speed=343.0, search_space_azi=None, search_space_ele=None):
 		super(DPIPD, self).__init__()
+
+		if search_space_azi is None:
+			search_space_azi = [0, 2*np.pi]
+		if search_space_ele is None:
+			search_space_ele = [np.pi/2, np.pi/2]
 
 		self.ndoa_candidate = ndoa_candidate
 		self.mic_location = mic_location
@@ -345,7 +351,8 @@ class DPIPD(nn.Module):
 		nele = ndoa_candidate[0]
 		nazi = ndoa_candidate[1]
 		ele_candidate = np.linspace(search_space_ele[0], search_space_ele[1], nele)
-		azi_candidate = np.linspace(search_space_azi[0], search_space_azi[1], nazi)
+		full_circle_azi = np.isclose(search_space_azi[1] - search_space_azi[0], 2*np.pi)
+		azi_candidate = np.linspace(search_space_azi[0], search_space_azi[1], nazi, endpoint=not full_circle_azi)
 		ITD = np.empty((nele, nazi, nmic, nmic))  # Time differences, floats
 		IPD = np.empty((nele, nazi, nf, nmic, nmic))  # Phase differences
 		fre_range = np.linspace(0.0, fre_max, nf)
@@ -445,14 +452,19 @@ class PredDOA(nn.Module):
 		self.removebatch = RemoveChFromBatch(ch_mode=self.ch_mode)
 		self.dev = dev
 		self.max_track = max_track
-		if is_linear_array:
-			search_space = [0,np.pi]
+		if is_linear_array and not is_planar_array:
+			self.search_space_azi = [0, np.pi]
+		else:
+			self.search_space_azi = [0, 2*np.pi]
+		self.search_space_ele = [np.pi/2, np.pi/2]
 		self.gerdpipd = DPIPD(ndoa_candidate=[res_the, res_phi],
                                         mic_location=mic_location,
                                         nf=int(self.nfft/2) + 1,
                                         fre_max=self.fre_max,
                                         ch_mode=self.ch_mode,
-                                        speed=340)
+                                        speed=340,
+										search_space_azi=self.search_space_azi,
+										search_space_ele=self.search_space_ele)
 
 		self.getmetric = getMetric(
             source_mode='multiple', metric_unfold=True)		
@@ -536,8 +548,9 @@ class PredDOA(nn.Module):
 				max_flat_idx = map.reshape((nb, nt, -1)).argmax(2)
 				ele_max_idx, azi_max_idx = np.unravel_index(max_flat_idx.cpu().numpy(), map.shape[2:])  # (nb, nt)
 
-				ele_candidate = np.linspace(np.pi/2, np.pi/2, nele)
-				azi_candidate = np.linspace(0, np.pi, nazi)
+				ele_candidate = np.linspace(self.search_space_ele[0], self.search_space_ele[1], nele)
+				full_circle_azi = np.isclose(self.search_space_azi[1] - self.search_space_azi[0], 2*np.pi)
+				azi_candidate = np.linspace(self.search_space_azi[0], self.search_space_azi[1], nazi, endpoint=not full_circle_azi)
 				pred_DOA = np.stack((ele_candidate[ele_max_idx], azi_candidate[azi_max_idx]),
 									axis=-1)  # (nb, nt, 2)
 				pred_DOA = torch.from_numpy(pred_DOA)
@@ -590,11 +603,12 @@ class PredDOA(nn.Module):
 		vad_est = pred_batch[-2].to(self.dev)
 		metric = {}
 		if idx != None:
-			np.save('./results/'+str(idx)+'_doagt',doa_gt.cpu().numpy())
-			np.save('./results/'+str(idx)+'_doaest',doa_est.cpu().numpy())
-			np.save('./results/'+str(idx)+'_vadgt',vad_gt.cpu().numpy())
-			np.save('./results/'+str(idx)+'_vadest',vad_est.cpu().numpy())
-			np.save('./results/'+str(idx)+'_ipd',pred_batch[-1].cpu().numpy())	
+			results_dir = './results'
+			os.makedirs(results_dir, exist_ok=True)
+			np.save(os.path.join(results_dir, str(idx)+'_doagt'), doa_gt.cpu().numpy())
+			np.save(os.path.join(results_dir, str(idx)+'_doaest'), doa_est.cpu().numpy())
+			np.save(os.path.join(results_dir, str(idx)+'_vadgt'), vad_gt.cpu().numpy())
+			np.save(os.path.join(results_dir, str(idx)+'_vadest'), vad_est.cpu().numpy())
 		metric['ACC'], metric['MDR'], metric['FAR'], metric['MAE'], metric['RMSE'] = \
 		 	self.getmetric(doa_gt, vad_gt, doa_est, vad_est, ae_mode = ae_mode, ae_TH=10, useVAD=True, vad_TH=vad_TH)
 		return metric

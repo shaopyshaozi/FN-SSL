@@ -16,3 +16,7 @@
 /IPDnet/__pycache__
 /IPDnet/logs
 /IPDnet/utils/__pycache__
+/IPDnet/DOA_eval/__pycache__
+/IPDnet/inference_results
+/IPDnet/results
+/IPDnet/lightning_logs
