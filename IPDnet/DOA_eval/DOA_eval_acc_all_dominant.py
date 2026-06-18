@@ -81,7 +81,8 @@ def postprocess_one_sample(
     vadest_path,
     sample_idx=0,
     num_sources=3,
-    vad_th=0.4,
+    vad_th=0.5,
+    score_mode="similarity",
     min_points_per_source=3,
     plot=True,
     plot_cluster=True,
@@ -92,7 +93,12 @@ def postprocess_one_sample(
     azi = convert_pred_angle(doa_est[sample_idx, :, 1, :])  # [T, K]
     score = vad_est[sample_idx, :, :]                       # [T, K]
 
-    active = score < vad_th
+    if score_mode == "similarity":
+        active = score > vad_th
+    elif score_mode == "distance":
+        active = score < vad_th
+    else:
+        raise ValueError("score_mode must be 'similarity' or 'distance'")
 
     T, K = azi.shape
     time_axis = np.arange(T) * 0.1
@@ -127,7 +133,10 @@ def postprocess_one_sample(
         for k in range(K):
             if active[t, k]:
                 valid_angles.append(azi[t, k])
-                valid_weights.append(1.0 / (score[t, k] + 1e-6))
+                if score_mode == "similarity":
+                    valid_weights.append(max(float(score[t, k]), 1e-6))
+                else:
+                    valid_weights.append(1.0 / (float(score[t, k]) + 1e-6))
                 valid_times.append(t)
 
     valid_angles = np.array(valid_angles)
@@ -212,7 +221,8 @@ def evaluate_one_file_with_csv(
     scene_index,
     sample_idx=0,
     num_sources=3,
-    vad_th=0.2,
+    vad_th=0.5,
+    score_mode="similarity",
     threshold=5,
     plot=True,
     plot_cluster=True,
@@ -231,6 +241,7 @@ def evaluate_one_file_with_csv(
         sample_idx=sample_idx,
         num_sources=num_sources,
         vad_th=vad_th,
+        score_mode=score_mode,
         plot=plot,
         plot_cluster=plot_cluster,
     )
@@ -266,16 +277,18 @@ def evaluate_one_file_with_csv(
 
 
 results=[]
-for scene_index in tqdm(range(1200)):
+threshold = 10
+for scene_index in tqdm(range(984)):
     result = evaluate_one_file_with_csv(
-        doaest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant_70\{scene_index}_doaest.npy",
-        vadest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant_70\{scene_index}_vadest.npy",
-        csv_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet2\inference_results_dominant_70\ground_truth.csv",
+        doaest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet\inference_results_dominant\{scene_index}_doaest.npy",
+        vadest_path=fr"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet\inference_results_dominant\{scene_index}_vadest.npy",
+        csv_path=r"D:\邵鹏远\UCL\博1\code\FN-SSL\IPDnet\inference_results_dominant\ground_truth.csv",
         scene_index=scene_index,
         sample_idx=0,
         num_sources=3,
-        vad_th=0.9,
-        threshold=5,
+        vad_th=0.7,
+        score_mode="similarity",
+        threshold=threshold,
         plot=False,
         plot_cluster=False,
     )
@@ -283,8 +296,6 @@ for scene_index in tqdm(range(1200)):
     results+=result['error']
 
 results = np.array(results)
-
-threshold = 10
 
 mean_error_all = np.mean(results)
 
